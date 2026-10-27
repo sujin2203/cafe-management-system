@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TEAM KALISI - Cafe Ordering</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: "Inter", sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f2f5; /* Simple background color for all interfaces */
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- CAFE DATA ---
+        const cafeData = {
+            name: "TEAM KALISI Cafe",
+            address: "Hyderabad, India",
+            logo: "☕",
+            menu: [
+                { _id: 'item_001', name: 'Espresso Coffee', price: 110.00, emoji: '☕' },
+                { _id: 'item_002', name: 'Masala Chai', price: 80.00, emoji: '🫖' },
+                { _id: 'item_003', name: 'Veg Sandwich', price: 150.00, emoji: '🥪' },
+                { _id: 'item_004', name: 'Chicken Puff', price: 90.00, emoji: '🥐' },
+                { _id: 'item_005', name: 'French Fries', price: 120.00, emoji: '🍟' },
+                { _id: 'item_006', name: 'Paneer Tikka', price: 250.00, emoji: '🍢' },
+                { _id: 'item_007', name: 'Chocolate Brownie', price: 180.00, emoji: '🍫' },
+                { _id: 'item_008', name: 'Fresh Lime Soda', price: 99.00, emoji: '🥤' },
+            ]
+        };
+
+        // Main App Component
+        function App() {
+            // State to manage the splash screen and ordering process
+            const [showSplash, setShowSplash] = useState(true);
+            const [currentStep, setCurrentStep] = useState('login'); // 'login', 'ordering', 'billing', 'confirmation'
+            
+            // State for customer and order details
+            const [customerName, setCustomerName] = useState('');
+            const [tableNumber, setTableNumber] = useState('');
+            const [cart, setCart] = useState([]);
+            const [finalOrder, setFinalOrder] = useState(null);
+            const [pastOrders, setPastOrders] = useState([]);
+
+            // --- LOCALSTORAGE & DATA HANDLING ---
+
+            // Show splash screen for a few seconds on first load
+            useEffect(() => {
+                const timer = setTimeout(() => {
+                    setShowSplash(false);
+                }, 2500); // Splash screen visible for 2.5 seconds
+                return () => clearTimeout(timer); // Cleanup timer
+            }, []);
+
+            // On initial load (after splash), get active order from localStorage
+            useEffect(() => {
+                if (!showSplash) {
+                    try {
+                        const activeOrder = JSON.parse(localStorage.getItem('activeCafeOrder'));
+                        if (activeOrder) {
+                            setCustomerName(activeOrder.customerName || '');
+                            setTableNumber(activeOrder.tableNumber || '');
+                            setCart(activeOrder.cart || []);
+                        }
+                    } catch (error) {
+                        console.error("Failed to parse active order from localStorage", error);
+                    }
+                }
+            }, [showSplash]);
+
+            // Save the current order state to localStorage whenever it changes
+            useEffect(() => {
+                const activeOrder = { customerName, tableNumber, cart };
+                localStorage.setItem('activeCafeOrder', JSON.stringify(activeOrder));
+            }, [customerName, tableNumber, cart]);
+
+            // Fetch past orders when customer name or table number changes
+            useEffect(() => {
+                if (customerName.trim() && tableNumber.trim()) {
+                    try {
+                        const allOrders = JSON.parse(localStorage.getItem('allCafeOrders')) || [];
+                        const customerHistory = allOrders.filter(
+                            order => order.customerName.toLowerCase() === customerName.toLowerCase().trim() && order.tableNumber === tableNumber.trim()
+                        );
+                        setPastOrders(customerHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+                    } catch (error) {
+                        console.error("Failed to parse all orders from localStorage", error);
+                    }
+                } else {
+                    setPastOrders([]);
+                }
+            }, [customerName, tableNumber]);
+
+
+            // --- CORE HANDLER FUNCTIONS ---
+
+            const handleLogin = (e) => {
+                e.preventDefault();
+                if (customerName.trim() && tableNumber.trim()) {
+                    setCurrentStep('ordering');
+                }
+            };
+
+            const handleUpdateQuantity = (item, change) => {
+                setCart(currentCart => {
+                    const existingItem = currentCart.find(cartItem => cartItem._id === item._id);
+                    let newQuantity = (existingItem ? existingItem.quantity : 0) + change;
+
+                    if (newQuantity <= 0) {
+                        return currentCart.filter(cartItem => cartItem._id !== item._id);
+                    } else {
+                        if (existingItem) {
+                            return currentCart.map(cartItem => 
+                                cartItem._id === item._id ? { ...cartItem, quantity: newQuantity } : cartItem
+                            );
+                        } else {
+                            return [...currentCart, { ...item, quantity: 1 }];
+                        }
+                    }
+                });
+            };
+            
+            const calculateBill = () => {
+                const subtotal = cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+                let discountPercentage = 0;
+                let discountAmount = 0;
+
+                if (subtotal >= 1000) {
+                    discountPercentage = 10;
+                } else if (subtotal >= 500) {
+                    discountPercentage = 5;
+                }
+
+                if (discountPercentage > 0) {
+                    discountAmount = subtotal * (discountPercentage / 100);
+                }
+
+                const finalTotal = subtotal - discountAmount;
+                return {
+                    subtotal: subtotal,
+                    discountPercentage: discountPercentage,
+                    discountAmount: discountAmount,
+                    finalTotal: finalTotal
+                };
+            };
+
+            const handleConfirmOrder = () => {
+                const bill = calculateBill();
+                const orderDetails = {
+                    customerName: customerName.trim(),
+                    tableNumber: tableNumber.trim(),
+                    items: cart,
+                    subtotal: bill.subtotal.toFixed(2),
+                    discountPercentage: bill.discountPercentage,
+                    discountApplied: bill.discountAmount.toFixed(2),
+                    totalAmount: bill.finalTotal.toFixed(2),
+                    timestamp: new Date().toISOString()
+                };
+                
+                const allOrders = JSON.parse(localStorage.getItem('allCafeOrders')) || [];
+                localStorage.setItem('allCafeOrders', JSON.stringify([...allOrders, orderDetails]));
+
+                setFinalOrder(orderDetails);
+                setCurrentStep('confirmation');
+                localStorage.removeItem('activeCafeOrder');
+            };
+
+            const handlePlaceNewOrder = () => {
+                setCustomerName('');
+                setTableNumber('');
+                setCart([]);
+                setFinalOrder(null);
+                setPastOrders([]);
+                setCurrentStep('login');
+            };
+
+            // --- Component for Discount Suggestion ---
+            const DiscountSuggestion = () => {
+                const { subtotal } = calculateBill();
+                let message = null;
+
+                if (subtotal > 0 && subtotal < 500) {
+                    const amountNeeded = 500 - subtotal;
+                    message = `Add items for ₹${amountNeeded.toFixed(2)} more to get a 5% discount!`;
+                } else if (subtotal >= 500 && subtotal < 1000) {
+                    const amountNeeded = 1000 - subtotal;
+                    message = `You've unlocked 5% off! Add ₹${amountNeeded.toFixed(2)} more to upgrade to a 10% discount!`;
+                } else if (subtotal >= 1000) {
+                    message = "🎉 You've unlocked the maximum 10% discount!";
+                }
+                
+                if (!message) return null;
+
+                return (
+                    <div className="mt-6 p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 rounded-lg text-center">
+                        <p className="font-semibold">{message}</p>
+                    </div>
+                );
+            };
+
+
+            // --- RENDERING LOGIC ---
+
+            const renderCurrentScreen = () => {
+                switch (currentStep) {
+                    case 'login':
+                        return (
+                            <div className="w-full max-w-lg mx-auto">
+                                <div className="bg-white p-8 rounded-xl shadow-lg">
+                                    <h2 className="text-3xl font-bold text-center text-gray-800 mb-2">Welcome to</h2>
+                                    <h1 className="text-4xl font-extrabold text-center text-orange-500 mb-8">{cafeData.name}</h1>
+                                    <form onSubmit={handleLogin} className="space-y-6">
+                                        <div>
+                                            <label htmlFor="customerName" className="block text-sm font-medium text-gray-700">Customer Name</label>
+                                            <input
+                                                type="text"
+                                                id="customerName"
+                                                value={customerName}
+                                                onChange={(e) => setCustomerName(e.target.value)}
+                                                className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500"
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label htmlFor="tableNumber" className="block text-sm font-medium text-gray-700">Table Number</label>
+                                            <input
+                                                type="text"
+                                                id="tableNumber"
+                                                value={tableNumber}
+                                                onChange={(e) => setTableNumber(e.target.value)}
+                                                className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500"
+                                                required
+                                            />
+                                        </div>
+                                        <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-md transition-colors">
+                                            Start Ordering
+                                        </button>
+                                    </form>
+                                </div>
+                                {pastOrders.length > 0 && (
+                                    <div className="mt-6 bg-white p-6 rounded-xl shadow-lg">
+                                        <h3 className="text-xl font-bold text-gray-800 mb-4">
+                                            Order History for Table {tableNumber}
+                                        </h3>
+                                        <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
+                                            {pastOrders.map(order => (
+                                                <div key={order.timestamp} className="p-3 border rounded-lg bg-gray-50">
+                                                    <p className="font-semibold">Order on {new Date(order.timestamp).toLocaleDateString()}</p>
+                                                    <p className="text-sm text-gray-600">Total: ₹{order.totalAmount} (Discount: ₹{order.discountApplied})</p>
+                                                    <p className="text-xs text-gray-500">Items: {order.items.map(i => i.name).join(', ')}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+
+                    case 'ordering':
+                        const { finalTotal } = calculateBill();
+                        return (
+                            <div className="w-full max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-lg">
+                                <h2 className="text-3xl font-bold text-center text-gray-800 mb-6">Menu</h2>
+                                <div className="space-y-4">
+                                    <div className="hidden md:flex font-bold text-gray-600 uppercase text-sm px-4">
+                                        <div className="w-2/5">Item</div>
+                                        <div className="w-1/5 text-right">Price</div>
+                                        <div className="w-1/5 text-center">Quantity</div>
+                                        <div className="w-1/5 text-right">Amount</div>
+                                    </div>
+                                    {cafeData.menu.map(item => {
+                                        const cartItem = cart.find(ci => ci._id === item._id);
+                                        const quantity = cartItem ? cartItem.quantity : 0;
+                                        return (
+                                            <div key={item._id} className="flex flex-col md:flex-row items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                                                <div className="w-full md:w-2/5 mb-2 md:mb-0 font-semibold text-lg">{item.emoji} {item.name}</div>
+                                                <div className="w-full md:w-1/5 text-left md:text-right text-gray-700">₹{item.price.toFixed(2)}</div>
+                                                <div className="w-full md:w-1/5 flex items-center justify-start md:justify-center my-2 md:my-0">
+                                                    <button onClick={() => handleUpdateQuantity(item, -1)} className="bg-gray-200 text-gray-700 px-3 py-1 rounded-full hover:bg-gray-300 transition-colors">-</button>
+                                                    <span className="font-medium text-lg text-gray-800 mx-4">{quantity}</span>
+                                                    <button onClick={() => handleUpdateQuantity(item, 1)} className="bg-gray-200 text-gray-700 px-3 py-1 rounded-full hover:bg-gray-300 transition-colors">+</button>
+                                                </div>
+                                                <div className="w-full md:w-1/5 text-left md:text-right font-bold text-orange-500">₹{(item.price * quantity).toFixed(2)}</div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                <DiscountSuggestion />
+
+                                {cart.length > 0 && (
+                                    <div className="mt-6 text-right">
+                                        <button onClick={() => setCurrentStep('billing')} className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-md transition-colors">
+                                            Proceed to Bill (Total: ₹{finalTotal.toFixed(2)})
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+
+                    case 'billing':
+                        const bill = calculateBill();
+                        return (
+                            <div className="w-full max-w-md mx-auto bg-white p-8 rounded-xl shadow-lg">
+                                <h2 className="text-3xl font-bold text-center text-gray-800 mb-6">Final Bill</h2>
+                                <div className="border-b pb-4 mb-4 space-y-2">
+                                    <p><strong>Customer:</strong> {customerName}</p>
+                                    <p><strong>Table:</strong> {tableNumber}</p>
+                                </div>
+                                <div className="space-y-2 mb-4">
+                                    {cart.map(item => (
+                                        <div key={item._id} className="flex justify-between">
+                                            <span>{item.name} x {item.quantity}</span>
+                                            <span className="font-medium">₹{(item.price * item.quantity).toFixed(2)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="border-t pt-4 space-y-2">
+                                    <div className="flex justify-between font-semibold">
+                                        <span>Subtotal</span>
+                                        <span>₹{bill.subtotal.toFixed(2)}</span>
+                                    </div>
+                                    {bill.discountAmount > 0 &&
+                                        <div className="flex justify-between font-semibold text-green-600">
+                                            <span>Discount ({bill.discountPercentage}%)</span>
+                                            <span>- ₹{bill.discountAmount.toFixed(2)}</span>
+                                        </div>
+                                    }
+                                    <div className="flex justify-between font-bold text-2xl text-orange-500 mt-2">
+                                        <span>Grand Total</span>
+                                        <span>₹{bill.finalTotal.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                                <div className="mt-8 flex space-x-4">
+                                    <button onClick={() => setCurrentStep('ordering')} className="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-md transition-colors">
+                                        Back to Menu
+                                    </button>
+                                    <button onClick={handleConfirmOrder} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-md transition-colors">
+                                        Confirm Order
+                                    </button>
+                                </div>
+                            </div>
+                        );
+
+                    case 'confirmation':
+                        return (
+                             <div className="w-full max-w-md mx-auto text-center">
+                                <div className="bg-white p-8 rounded-xl shadow-lg mb-6">
+                                    <h1 className="text-4xl font-extrabold text-green-500 mb-4">Thank You!</h1>
+                                    <p className="text-lg text-gray-700 mb-6">Your order has been placed successfully.</p>
+                                    <div className="text-left border-t pt-4">
+                                        <h3 className="font-bold text-lg mb-2">Order Summary:</h3>
+                                        <p><strong>Customer:</strong> {finalOrder.customerName}</p>
+                                        <p><strong>Table:</strong> {finalOrder.tableNumber}</p>
+                                        <ul className="list-disc list-inside my-2">
+                                            {finalOrder.items.map(item => (
+                                                <li key={item._id}>{item.name} x {item.quantity}</li>
+                                            ))}
+                                        </ul>
+                                        <p className="mt-2">Subtotal: ₹{finalOrder.subtotal}</p>
+                                        <p className="text-green-600">Discount ({finalOrder.discountPercentage}%): - ₹{finalOrder.discountApplied}</p>
+                                        <p className="font-bold mt-2">Total Paid: ₹{finalOrder.totalAmount}</p>
+                                    </div>
+                                </div>
+                                <button onClick={handlePlaceNewOrder} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-md transition-colors">
+                                    Place New Order
+                                </button>
+                            </div>
+                        );
+                        
+                    default:
+                        return <p>Loading...</p>;
+                }
+            };
+            
+            return (
+                 <main className="min-h-screen w-full flex items-center justify-center p-4">
+                    {showSplash ? (
+                        <div className="text-center transition-opacity duration-500">
+                           <div className="bg-white p-8 rounded-full shadow-2xl">
+                                <div className="text-9xl animate-pulse">{cafeData.logo}</div>
+                           </div>
+                           <h1 className="text-5xl font-extrabold text-gray-800 mt-6" style={{textShadow: '2px 2px 4px rgba(0,0,0,0.1)'}}>{cafeData.name}</h1>
+                        </div>
+                    ) : (
+                        renderCurrentScreen()
+                    )}
+                </main>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
